@@ -54,6 +54,7 @@ enum WorkingModes
 #define MIN_ADC_RT 35
 
 #define PWM_POWER_OFF 100
+#define PWM_POWER_ON 50
 #define SLEEP_TEMP 100
 #define EEPROM_SAVE_TIMEOUT 2000
 #define HEATPOINT_DISPLAY_DELAY 2000
@@ -86,11 +87,11 @@ void setup()
     // Configure PWM
     pinMode(PD4, OUTPUT);
     PWM_init(PWM_CH1);
-    PWM_duty(PWM_CH1, 100); // set heater OFF
+    PWM_duty(PWM_CH1, PWM_POWER_OFF); // set heater OFF
 
     _sleepTimer = currentMillis();
     _heatPointDisplayTime = _sleepTimer + HEATPOINT_DISPLAY_DELAY;
-
+    
     // EEPROM
     eeprom_read(EEPROM_START_ADDR, &_eepromData, sizeof(_eepromData));
     // First launch, eeprom empty OR -button pressed when power the device
@@ -102,24 +103,25 @@ void setup()
         _eepromData.sleepTimeout = 3;       // 3 min, heatPoint 100C
         _eepromData.deepSleepTimeout = 10;  // 10 min, heatPoint 0
         _eepromData.forceModeIncrement = 0; // 0 degrees
-        eeprom_write(EEPROM_START_ADDR, &_eepromData, sizeof(_eepromData));
+        eeprom_write(EEPROM_START_ADDR, &_eepromData, sizeof(_eepromData));            
     }
 
     beepAlarm();
     // Press +button when power the device will enter to Setup Menu
     if (getPin(PB7) == LOW)
     {
-        setup_menu();
+        setup_menu();        
     }
-
-    // Now we can switch ON the heater at 50%
-    PWM_duty(PWM_CH1, 50);
+    
+    // Now we can switch ON the heater at 50% (value PWM_POWER_ON on define)
+    PWM_duty(PWM_CH1, PWM_POWER_ON);
 }
 
 void mainLoop()
 {
-    static uint16_t localCnt = 0;
-
+    static uint16_t localCnt = 0;    
+    static uint16_t adcValStart = 0;
+           
     uint8_t displaySymbol = 0;
     uint32_t nowTime = currentMillis();
 
@@ -130,7 +132,7 @@ void mainLoop()
     oldADCUI = adcUIn;
 
     // Temperature sensor
-    static uint16_t oldADCVal = MIN_ADC_RT;
+    static uint16_t oldADCVal = 0;
     uint16_t adcVal = ADC_read(ADC1_CSR_CH0);
     adcVal = ((oldADCVal * 7) + adcVal) >> 3; // noise filter
     oldADCVal = adcVal;
@@ -138,14 +140,24 @@ void mainLoop()
     // Degrees value
     adcVal = (adcVal < MIN_ADC_RT) ? MIN_ADC_RT : adcVal;
     int16_t currentDegrees = (MAX_HEAT - MIN_HEAT) * (adcVal - MIN_ADC_RT) / (MAX_ADC_RT - MIN_ADC_RT);
-    currentDegrees += _eepromData.calibrationValue;
-
+    currentDegrees += _eepromData.calibrationValue;    
+    currentDegrees = (currentDegrees < 0) ? 0 : currentDegrees;
+    
     // ER1: short on sensor
     // ER2: sensor is broken
-    uint8_t error = (adcVal < 10) ? 1 : (adcVal > 1000) ? 2 : 0;
+    // ER4: heating element is broken    
+    uint8_t error = (adcVal < 10) ? 1 : (adcVal > 1000) ? 2 : 0;    
+    adcValStart = (localCnt == 333) ? adcVal : adcValStart; //wait 300 ms, initial temperature
+    static int8_t flagError4 = 0;
+    if (localCnt == 3333 && !flagError4) //wait 3 sec, once
+    {
+        flagError4 = adcVal - adcValStart;
+        error = (flagError4 < 4) ? 4 : 0; //whether the soldering iron is 20 degrees above the initial temperature
+        flagError4 = 1;
+    }
     if (error)
     {
-        PWM_duty(PWM_CH1, 100); // switch OFF the heater
+        PWM_duty(PWM_CH1, PWM_POWER_OFF); // switch OFF the heater
         S7C_setChars("ER");
         S7C_setDigit(2, error);
         S7C_refreshDisplay(nowTime);
@@ -174,7 +186,7 @@ void mainLoop()
         _heatPointDisplayTime = nowTime + HEATPOINT_DISPLAY_DELAY;
         if (action != oldAction && action > 1) // two butons were pressed
         {
-            beepAlarm();
+            beepAlarm();            
             _currentState = (_currentState == FORCED_MODE) ? NORMAL_MODE : FORCED_MODE;
         }
         if (oldHeatPoint != _eepromData.heatPoint)
@@ -209,7 +221,7 @@ void mainLoop()
     // before that we keep the heater at 50%
     // if the diff is negative, we'll stop the heater
     int16_t diff = targetHeatPoint - currentDegrees;
-    int16_t pwmVal = (diff < 0) ? PWM_POWER_OFF : (diff > 50) ? 50 : 90 - diff;
+    int16_t pwmVal = (diff < 0) ? PWM_POWER_OFF : (diff > 50) ? PWM_POWER_ON : 90 - diff;
     PWM_duty(PWM_CH1, pwmVal);
 
     // Setup display value
@@ -217,7 +229,7 @@ void mainLoop()
     //   * if any button is pressed
     //   * till _heatPointDisplayTime timeout is reached
     //   * when the current temperature is in range ±10 degrees
-    uint16_t displayVal = (currentDegrees < 0) ? 0 : currentDegrees;
+    uint16_t displayVal = currentDegrees;
     uint8_t tempInRange = (displayVal >= targetHeatPoint - 10) && (displayVal <= targetHeatPoint + 10);
     if (nowTime < _heatPointDisplayTime || tempInRange)
     {
@@ -228,7 +240,7 @@ void mainLoop()
     // Setup status symbol, flashing using local counter overflow
     displaySymbol |= (_currentState >= SLEEP_MODE) && ((localCnt / 500) % 2) ? SYM_MOON : 0; // 1Hz flashing moon
     displaySymbol |= pwmVal < 100 && ((localCnt / 50) % 2) ? SYM_SUN : 0;                    // 10Hz flashing heater
-    displaySymbol |= (_currentState == FORCED_MODE) ? SYM_FARS : 0;                          // F
+    displaySymbol |= (_currentState == FORCED_MODE) ? SYM_FARS : 0;                          // F in forced mode
 
     if (_currentState != DEEPSLEEP_MODE)
     {
@@ -264,7 +276,7 @@ uint8_t checkSleep(uint32_t nowTime)
     }
     else if ((nowTime - _sleepTimer) > _eepromData.deepSleepTimeout * 60000)
     {
-        //deepSleep();
+        deepSleep();
         return DEEPSLEEP_MODE;
     }
     else if ((nowTime - _sleepTimer) > _eepromData.sleepTimeout * 60000)
