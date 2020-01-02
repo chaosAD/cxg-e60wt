@@ -50,10 +50,11 @@ enum
     SLEEP1_VAL,
     SLEEP2_VAL,
     FORCE_VAL,
+    HEATER_VAL,
 };
 
 static uint32_t _menuDisplayTime = 0;
-static char *_menuNames[] = {"SOU", "CAL", "SL1", "SL2", "FRC"};
+static char *_menuNames[] = {"SOU", "CAL", "SL1", "SL2", "FRC", "HEA"};
 
 extern struct Button _btnPlus;
 extern struct Button _btnMinus;
@@ -76,7 +77,7 @@ void setup_menu()
         if (menuAction)
         {
             _menuDisplayTime = nowTime + MENU_DISPLAY_DELAY;
-            menuIndex = menuIndex > FORCE_VAL ? 0 : menuIndex < 0 ? FORCE_VAL : menuIndex;
+            menuIndex = menuIndex > HEATER_VAL ? 0 : menuIndex < 0 ? HEATER_VAL : menuIndex;
         }
 
         if (nowTime < _menuDisplayTime)
@@ -90,6 +91,8 @@ void setup_menu()
             uint16_t oldSleepTimeout = _eepromData.sleepTimeout;
             uint16_t oldDeepSleepTimeout = _eepromData.deepSleepTimeout;
             uint16_t oldforceModeIncrement = _eepromData.forceModeIncrement;
+            uint16_t oldheaterVoltage = _eepromData.heaterVoltage;
+
             switch (menuIndex)
             {
             case ENABLE_SOUND: // ENABLE SOUND: values 0 or 1
@@ -151,6 +154,18 @@ void setup_menu()
                 S7C_setDigit(0, _eepromData.forceModeIncrement / 100);
                 S7C_setDigit(1, (_eepromData.forceModeIncrement / 10) % 10);
                 S7C_setDigit(2, _eepromData.forceModeIncrement % 10);
+                break;
+            case HEATER_VAL: //VOLTAGE HEATER, 110 or 220 volt
+                checkButton(&_btnPlus, &_eepromData.heaterVoltage, 110, nowTime);  // ADD button
+                checkButton(&_btnMinus, &_eepromData.heaterVoltage, 110, nowTime); // MINUS button
+                if (oldheaterVoltage != _eepromData.heaterVoltage)
+                {
+                    _eepromData.heaterVoltage = (_eepromData.heaterVoltage > 220) ? 110 : _eepromData.heaterVoltage;
+                    _haveToSaveData = nowTime;
+                }
+                S7C_setDigit(0, _eepromData.heaterVoltage / 100);
+                S7C_setDigit(1, (_eepromData.heaterVoltage / 10) % 10);
+                S7C_setDigit(2, _eepromData.heaterVoltage % 10);
                 break;
             default:
                 S7C_setChars("ERR");

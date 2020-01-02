@@ -38,6 +38,7 @@ struct EEPROM_DATA
     uint16_t forceModeIncrement;
     uint16_t calibrationADC1;
     uint16_t calibrationADC2;
+    uint16_t heaterVoltage;
 };
 
 void checkPendingDataSave(uint32_t nowTime);
