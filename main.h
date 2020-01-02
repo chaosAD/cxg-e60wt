@@ -36,6 +36,8 @@ struct EEPROM_DATA
     uint16_t sleepTimeout;
     uint16_t deepSleepTimeout;
     uint16_t forceModeIncrement;
+    uint16_t calibrationADC1;
+    uint16_t calibrationADC2;
 };
 
 void checkPendingDataSave(uint32_t nowTime);

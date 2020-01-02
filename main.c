@@ -45,13 +45,17 @@ enum WorkingModes
     NORMAL_MODE,
     FORCED_MODE,
     SLEEP_MODE,
-    DEEPSLEEP_MODE
+    DEEPSLEEP_MODE,
+    CALIBRATION_MODE1,
+    CALIBRATION_MODE2
 };
 
 #define MIN_HEAT 50
 #define MAX_HEAT 450
 #define MAX_ADC_RT 130
 #define MIN_ADC_RT 35
+#define CALIBRATION_TEMP1 100
+#define CALIBRATION_TEMP2 350
 
 #define PWM_POWER_OFF 100
 #define PWM_POWER_ON 50
@@ -95,7 +99,7 @@ void setup()
     // EEPROM
     eeprom_read(EEPROM_START_ADDR, &_eepromData, sizeof(_eepromData));
     // First launch, eeprom empty OR -button pressed when power the device
-    if (_eepromData.heatPoint == 0 || getPin(PB6) == LOW)
+    if (_eepromData.heatPoint == 0 || (getPin(PB6) == LOW && getPin(PB7) > 0))
     {
         _eepromData.heatPoint = 270;
         _eepromData.enableSound = 1;
@@ -108,11 +112,18 @@ void setup()
 
     beepAlarm();
     // Press +button when power the device will enter to Setup Menu
-    if (getPin(PB7) == LOW)
+    if (getPin(PB7) == LOW && getPin(PB6) > 0)
     {
         setup_menu();        
     }
     
+    // Enter in calibration mode (hold both buttons and turn on the device)
+    if (getPin(PB6) == LOW && getPin(PB7) == LOW)
+    {
+        _currentState = CALIBRATION_MODE1;
+        _eepromData.heatPoint = CALIBRATION_TEMP1;
+        checkPendingDataSave (currentMillis());
+    }
     // Now we can switch ON the heater at 50% (value PWM_POWER_ON on define)
     PWM_duty(PWM_CH1, PWM_POWER_ON);
 }
@@ -140,13 +151,13 @@ void mainLoop()
     // Degrees value
     adcVal = (adcVal < MIN_ADC_RT) ? MIN_ADC_RT : adcVal;
     int16_t currentDegrees = (MAX_HEAT - MIN_HEAT) * (adcVal - MIN_ADC_RT) / (MAX_ADC_RT - MIN_ADC_RT);
-    currentDegrees += _eepromData.calibrationValue;    
+    currentDegrees += _eepromData.calibrationValue;
     currentDegrees = (currentDegrees < 0) ? 0 : currentDegrees;
     
     // ER1: short on sensor
     // ER2: sensor is broken
     // ER4: heating element is broken    
-    uint8_t error = (adcVal < 10) ? 1 : (adcVal > 1000) ? 2 : 0;    
+     uint8_t error = (adcVal < 10) ? 1 : (adcVal > 1000) ? 2 : 0;    
     adcValStart = (localCnt == 333) ? adcVal : adcValStart; //wait 300 ms, initial temperature
     static int8_t flagError4 = 0;
     if (localCnt == 3333 && !flagError4) //wait 3 sec, once
@@ -186,7 +197,7 @@ void mainLoop()
         _heatPointDisplayTime = nowTime + HEATPOINT_DISPLAY_DELAY;
         if (action != oldAction && action > 1) // two butons were pressed
         {
-            beepAlarm();            
+            beepAlarm();
             _currentState = (_currentState == FORCED_MODE) ? NORMAL_MODE : FORCED_MODE;
         }
         if (oldHeatPoint != _eepromData.heatPoint)
