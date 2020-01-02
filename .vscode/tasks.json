@@ -18,13 +18,13 @@
     },
     {
       "label": "Flash CXG",
-      "type": "process",
+      "type": "shell",
       "command": "make flash",
       "options": {
         "cwd": "${workspaceRoot}"
       },
       "group": {
-        "kind": "build",
+        "kind": "test",
         "isDefault": true
       },
       "problemMatcher": [

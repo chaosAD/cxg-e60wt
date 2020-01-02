@@ -1,5 +1,5 @@
 export PATH := $(PATH):$(HOME)/local/sdcc/bin
-
+SHELL = cmd.exe
 MCU  = stm8s103k3
 ARCH = stm8
 
@@ -33,7 +33,7 @@ CFLAGS  += --stack-auto --noinduction --use-non-free
 LDFLAGS  = -m$(ARCH) -l$(ARCH) --out-fmt-ihx
 MKDIR_P  = mkdir -p
 
-all: directories $(TARGET) size hex
+all: directories $(TARGET) hex size
 
 $(TARGET): $(OBJS)
 	$(CC) $(LDFLAGS) $(OBJS) -o $@
@@ -54,8 +54,8 @@ ${OBJ_DIR}:
 
 size:
 	@$(OBJCOPY) -I ihex --output-target=binary $(TARGET) $(TARGET).bin
-	@echo "----------"
-	@stat -L -f "Image size: %z bytes." $(TARGET).bin
+	@echo ----------
+	@for %%I in ($(TARGET).bin) do @echo Image size: %%~zI bytes.
 
 flash: $(TARGET)
 	stm8flash -c stlinkv2 -p $(MCU) -w $(TARGET)
