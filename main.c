@@ -56,6 +56,11 @@ enum WorkingModes
 #define CALIBRATION_TEMP2 350 //calibration temperature 2
 
 #define PWM_POWER_OFF 100
+#define PWM_MAX_110_220V 55 //inverted, for heater 110 volt max 45% (220 volt in rozetka)
+#define PWM_MAX_220_220V 20 //inverted, for heater 220 volt max 80% (220 volt in rozetka)
+#define PWM_MAX_110_110V 15 //inverted, for heater 110 volt max 85% (110 volt in rozetka)
+#define PWM_MAX_220_110V 0 //inverted, for heater 220 volt max 100% (110 volt in rozetka)
+
 #define SLEEP_TEMP 100
 #define EEPROM_SAVE_TIMEOUT 2000
 #define HEATPOINT_DISPLAY_DELAY 2000
@@ -70,7 +75,6 @@ uint8_t error = 0;
 int16_t coefA;
 int16_t coefB;
 uint32_t nowTime;
-int16_t pwmValMax;
 
 struct EEPROM_DATA _eepromData;
 struct Button _btnPlus = {PB7, 0, 0, 0, 0, 0};
@@ -138,9 +142,6 @@ void setup()
     coefA = (CALIBRATION_TEMP1 - CALIBRATION_TEMP2) / (calibrationADC1 - calibrationADC2);
     coefB = CALIBRATION_TEMP2 - (coefA * calibrationADC2);
 
-    //Maximum PWM value for different voltage heaters
-    pwmValMax = (_eepromData.heaterVoltage == 110) ? 55 : 35; // for 110 volt max 45%, for 220 volt max 65%
-
     // Enter in calibration mode (hold both buttons and turn on the device)
     if (getPin(PB6) == LOW && getPin(PB7) == LOW)
     {
@@ -149,9 +150,6 @@ void setup()
         _eepromData.heatPoint = CALIBRATION_TEMP1;
         eeprom_write(EEPROM_START_ADDR, &_eepromData, sizeof(_eepromData));
     }
-
-    // Now we can switch ON the heater
-    PWM_duty(PWM_CH1, pwmValMax);
 }
 
 void mainLoop()
@@ -163,11 +161,11 @@ void mainLoop()
     nowTime = currentMillis();
 
     // Input power sensor
-    static uint16_t oldADCUI = 0;
+    static uint16_t oldADCUI = 220;
     uint16_t adcUIn = ADC_read(ADC1_CSR_CH1);
     adcUIn = ((oldADCUI * 7) + adcUIn) >> 3; // noise filter
-    oldADCUI = adcUIn;
-
+    oldADCUI = adcUIn; // value < 190 for 110 volt in rozetka, value >= 190 for 220 volt in rozetka
+    
     // Temperature sensor
     static uint16_t oldADCVal = 50; //any value
     uint16_t adcVal = ADC_read(ADC1_CSR_CH0);
@@ -185,12 +183,12 @@ void mainLoop()
     // ER4: heating element is broken    
     error = (adcVal < 10) ? 1 : (adcVal > 1000) ? 2 : (currentDegrees > (MAX_HEAT + 30)) ? 3 : 0;    
     adcValStart = (localCnt == 133) ? adcVal : adcValStart; //wait 300 ms, initial temperature
-    static int8_t flagError4 = 0;
-    if (localCnt == 4333 && !flagError4 && adcValStart < _eepromData.calibrationADC1) //wait 4 sec, once
+    static int8_t flagErr4 = 0;
+    if (localCnt == 4333 && !flagErr4 && adcValStart < _eepromData.calibrationADC1) //wait 4 sec, once
     {
-        flagError4 = adcVal - adcValStart;
-        error = (flagError4 < 4) ? 4 : 0; //whether the soldering iron is 20 degrees above the initial temperature
-        flagError4 = 1;
+        flagErr4 = adcVal - adcValStart;
+        error = (flagErr4 < 4) ? 4 : 0; //whether the soldering iron is 20 degrees above the initial temperature
+        flagErr4 = 1;
     }
     //error = (error == 4) ? 0 : error; //for debug
     if (error)                                          // error in device
@@ -295,11 +293,28 @@ void mainLoop()
     }
 
     // Setup heater
+    int16_t pwmValMax = (adcUIn >= 190 && _eepromData.heaterVoltage == 110) ? PWM_MAX_110_220V : (adcUIn >= 190 && _eepromData.heaterVoltage == 220) ? PWM_MAX_220_220V : 
+                (adcUIn < 190 && _eepromData.heaterVoltage == 110) ? PWM_MAX_110_110V : (adcUIn < 190 && _eepromData.heaterVoltage == 220) ? PWM_MAX_220_110V :
+                PWM_MAX_110_220V;
     // 50 degrees before the heatPoint we start to slow down the heater
     // before that we keep the heater at xx%
     // if the diff is negative, we'll stop the heater
     int16_t diff = targetHeatPoint - currentDegrees;
-    int16_t pwmVal = (diff < 0) ? PWM_POWER_OFF : (diff > 50) ? pwmValMax : 85 - diff;
+    int16_t pwmVal = (diff < 0) ? PWM_POWER_OFF : (diff > 50) ? pwmValMax : 75 - diff; // FIXME:
+    pwmVal = (pwmVal < pwmValMax) ? pwmValMax : pwmVal;
+
+    // Soft start heating
+    int16_t pwmValSoftHeating = 100 - pwmVal;
+    static uint8_t flagSoftHeating = 0;
+    if (!flagSoftHeating)
+    {
+        pwmVal = (localCnt < 600) ? (pwmVal + (pwmValSoftHeating / 2)) : 
+                 (localCnt >= 600 && localCnt < 1100) ? (pwmVal + (pwmValSoftHeating / 3)) : 
+                 (localCnt >= 1100 && localCnt < 1601) ? (pwmVal + (pwmValSoftHeating / 4)) : 100;
+        flagSoftHeating = (localCnt == 1600) ? 1 : 0;
+    }
+    
+    // Heat
     PWM_duty(PWM_CH1, pwmVal);
 
     // Setup display value
