@@ -183,8 +183,8 @@ void mainLoop()
     // ER4: heating element is broken    
     error = (adcVal < 10) ? 1 : (adcVal > 1000) ? 2 : (currentDegrees > (MAX_HEAT + 30)) ? 3 : 0;
     static int8_t flagErr4 = 0;    
-    adcValStart = (localCnt == 133 && !flagErr4) ? adcVal : 0; //wait 300 ms, initial temperature
-    if ((localCnt == 4333) && !flagErr4 && (adcValStart < (calibrationADC1 - 10))) //wait 4 sec, once
+    adcValStart = (localCnt == 133) ? adcVal : adcValStart; //wait 300 ms, initial temperature
+    if (localCnt == 4333 && !flagErr4 && adcValStart < calibrationADC1 - 10) //wait 4 sec, once
     {
         flagErr4 = adcVal - adcValStart;
         error = (flagErr4 < 4) ? 4 : 0; //whether the soldering iron is 20 degrees above the initial temperature
