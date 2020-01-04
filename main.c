@@ -51,7 +51,7 @@ enum WorkingModes
 };
 
 #define MIN_HEAT 80
-#define MAX_HEAT 400
+#define MAX_HEAT 450
 #define CALIBRATION_TEMP1 100 //calibration temperature 1
 #define CALIBRATION_TEMP2 350 //calibration temperature 2
 
