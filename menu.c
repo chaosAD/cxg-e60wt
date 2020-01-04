@@ -38,7 +38,7 @@
 #define MULTICLICK_TIME 250
 #define MINUS_SYM 0x40
 
-#define MAX_CALIB_VAL 99
+#define MAX_CALIB_VAL 95
 #define MAX_SLEEP_MINS 30
 #define MAX_DEEPSLEEP_MINS 60
 #define MAX_FORCE_VAL 100
@@ -108,8 +108,8 @@ void setup_menu()
                 S7C_setDigit(2, _eepromData.enableSound);
                 break;
             case CALIBRATION_VAL: // CALIBRATION: values from -MAX_CALIB_VAL to MAX_CALIB_VAL
-                checkButton(&_btnPlus, &_eepromData.calibrationValue, 1, nowTime);
-                checkButton(&_btnMinus, &_eepromData.calibrationValue, -1, nowTime);
+                checkButton(&_btnPlus, &_eepromData.calibrationValue, 5, nowTime);
+                checkButton(&_btnMinus, &_eepromData.calibrationValue, -5, nowTime);
                 if (oldCalibrationValue != _eepromData.calibrationValue)
                 {
                     _eepromData.calibrationValue = (_eepromData.calibrationValue < -MAX_CALIB_VAL) ? -MAX_CALIB_VAL : (_eepromData.calibrationValue > MAX_CALIB_VAL) ? MAX_CALIB_VAL : _eepromData.calibrationValue;
@@ -144,8 +144,8 @@ void setup_menu()
                 S7C_setDigit(2, _eepromData.deepSleepTimeout % 10);
                 break;
             case FORCE_VAL: // FORCE MODE INCREMENT: values 0..100 degrees
-                checkButton(&_btnPlus, &_eepromData.forceModeIncrement, 1, nowTime);
-                checkButton(&_btnMinus, &_eepromData.forceModeIncrement, -1, nowTime);
+                checkButton(&_btnPlus, &_eepromData.forceModeIncrement, 5, nowTime);
+                checkButton(&_btnMinus, &_eepromData.forceModeIncrement, -5, nowTime);
                 _eepromData.forceModeIncrement = _eepromData.forceModeIncrement > MAX_FORCE_VAL ? MAX_FORCE_VAL : _eepromData.forceModeIncrement;
                 if (oldforceModeIncrement != _eepromData.forceModeIncrement)
                 {
