@@ -61,9 +61,6 @@ extern struct Button _btnMinus;
 extern uint32_t _haveToSaveData;
 extern struct EEPROM_DATA _eepromData;
 
-//
-//  TODO:
-//
 void setup_menu()
 {
     int16_t menuIndex = 0;

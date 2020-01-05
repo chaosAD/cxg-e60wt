@@ -62,8 +62,9 @@ enum WorkingModes
 #define PWM_MAX_220_110V 0 //inverted, for heater 220 volt max 100% (110 volt in rozetka)
 
 #define SLEEP_TEMP 100
+#define REAL_SECOND 320 // in mainLoop(), 1 second = (localCnt == REAL_SECOND)
 #define EEPROM_SAVE_TIMEOUT 2000
-#define HEATPOINT_DISPLAY_DELAY 2000
+#define HEATPOINT_DISPLAY_DELAY 2500
 
 uint32_t _haveToSaveData = 0;
 static uint32_t _sleepTimer = 0;
@@ -92,6 +93,11 @@ void setup()
     disable_interrupts();
     TIM4_init();
     enable_interrupts();
+
+    // Configure mercury sensor and button pins
+    pinMode(PB5, INPUT);
+    pinMode(PB7, INPUT);
+    pinMode(PB7, INPUT);
 
     // Configure 7-segments display
     S7C_init();
@@ -161,7 +167,7 @@ void mainLoop()
     nowTime = currentMillis();
 
     // Input power sensor
-    static uint16_t oldADCUI = 220;
+    static uint16_t oldADCUI = 220; //any value
     uint16_t adcUIn = ADC_read(ADC1_CSR_CH1);
     adcUIn = ((oldADCUI * 7) + adcUIn) >> 3; // noise filter
     oldADCUI = adcUIn; // value < 190 for 110 volt in rozetka, value >= 190 for 220 volt in rozetka
@@ -183,22 +189,22 @@ void mainLoop()
     // ER4: heating element is broken    
     error = (adcVal < 10) ? 1 : (adcVal > 1000) ? 2 : (currentDegrees > (MAX_HEAT + 30)) ? 3 : 0;
     static int8_t flagErr4 = 0;    
-    adcValStart = (localCnt == 133) ? adcVal : adcValStart; //wait 300 ms, initial temperature
-    if (localCnt == 4333 && !flagErr4 && adcValStart < calibrationADC1 - 10) //wait 4 sec, once
+    adcValStart = (localCnt == (REAL_SECOND / 3)) ? adcVal : adcValStart; //wait 333 ms, initial temperature
+    if (localCnt == (REAL_SECOND * 4) && !flagErr4 && adcValStart < calibrationADC1 - 10) //wait 4 sec, once
     {
         flagErr4 = adcVal - adcValStart;
         error = (flagErr4 < 4) ? 4 : 0; //whether the soldering iron is 20 degrees above the initial temperature
         flagErr4 = 1;
     }
-    //error = (error == 4) ? 0 : error; //for debug
-    if (error)                                          // error in device
+    //error = (error == 4) ? 0 : error;   //for debug
+    if (error > 0)                      // error in device
     {
         PWM_duty(PWM_CH1, PWM_POWER_OFF); // switch OFF the heater
         beep();
         localCnt = 0;
         while(1)
         {
-            uint8_t flashing = ((localCnt / 200) % 2) ? 1 : 0; // flashing
+            uint8_t flashing = ((localCnt / 300) % 2) ? 1 : 0; // flashing ER*
             if (!flashing)
             {
                 S7C_setChars("ER");
@@ -209,7 +215,7 @@ void mainLoop()
                 S7C_blank();
             }
             S7C_refreshDisplay(localCnt++);
-            delay_ms(1);
+            //delay_ms(1);
         }
     }
 
@@ -300,29 +306,40 @@ void mainLoop()
     // before that we keep the heater at xx%
     // if the diff is negative, we'll stop the heater
     int16_t diff = targetHeatPoint - currentDegrees;
-    int16_t pwmVal = (diff < 0) ? PWM_POWER_OFF : (diff > 50) ? pwmValMax : 75 - diff; // FIXME:
+    int16_t pwmVal = (diff < 0) ? PWM_POWER_OFF : (diff > 50) ? pwmValMax : 75 - diff; 
     pwmVal = (pwmVal < pwmValMax) ? pwmValMax : pwmVal;
 
-    // Soft start heating
+    // Soft start heating //fixme:
     int16_t pwmValSoftHeating = 100 - pwmVal;
     static uint8_t flagSoftHeating = 0;
     if (!flagSoftHeating)
     {
-        pwmVal = (localCnt < 600) ? (pwmVal + (pwmValSoftHeating / 2)) : 
-                 (localCnt >= 600 && localCnt < 1100) ? (pwmVal + (pwmValSoftHeating / 3)) : 
-                 (localCnt >= 1100 && localCnt < 1601) ? (pwmVal + (pwmValSoftHeating / 4)) : 100;
-        flagSoftHeating = (localCnt == 1600) ? 1 : 0;
+        pwmVal = (localCnt < 300) ? (pwmVal + (pwmValSoftHeating / 2)) : 
+                 (localCnt >= 300 && localCnt < 600) ? (pwmVal + (pwmValSoftHeating / 3)) : 
+                 (localCnt >= 600 && localCnt < 900) ? (pwmVal + (pwmValSoftHeating / 4)) : 85;
+        flagSoftHeating = (localCnt == 900) ? 1 : 0;
     }
     
     // Heat
     PWM_duty(PWM_CH1, pwmVal);
-
+ /*   
+    // Realtime test
+    static uint16_t tick = 0;
+    static uint8_t second = 0;
+    tick++;
+    if (tick == 320)
+    {
+        tick = 0;
+        second++;
+    }
+*/    
     // Setup display value
     // We will show the current heatPoint
     //   * if any button is pressed
     //   * till _heatPointDisplayTime timeout is reached
     //   * when the current temperature is in range ±10 degrees
     uint16_t displayVal = currentDegrees;
+    //uint16_t displayVal = second; // for Realtime test and uint8_t tempInRange = false;
     uint8_t tempInRange = (displayVal >= targetHeatPoint - 15) && (displayVal <= targetHeatPoint + 15);
     if (nowTime < _heatPointDisplayTime || tempInRange)
     {
@@ -331,8 +348,8 @@ void mainLoop()
     }
 
     // Setup status symbol, flashing using local counter overflow
-    displaySymbol |= (_currentState >= SLEEP_MODE) && ((localCnt / 500) % 2) ? SYM_MOON : 0; // 1Hz flashing moon
-    displaySymbol |= pwmVal < 100 && ((localCnt / 50) % 2) ? SYM_SUN : 0;                    // 10Hz flashing heater
+    displaySymbol |= (_currentState >= SLEEP_MODE) && ((localCnt / REAL_SECOND) % 2) ? SYM_MOON : 0; // 1Hz flashing moon
+    displaySymbol |= pwmVal < 100 && ((localCnt / (REAL_SECOND / 10)) % 2) ? SYM_SUN : 0;                    // 10Hz flashing heater
     displaySymbol |= (_currentState == FORCED_MODE) ? SYM_FARS : 0;                          // F in forced mode
     displaySymbol |= (_currentState >= CALIBRATION_MODE1) ? 107 : 0;                         // All symbol light in calibration mode
 
@@ -411,7 +428,7 @@ void deepSleep()
         uint8_t displaySymbol = ((localCnt / 500) % 2) ? SYM_MOON : 0; // 1Hz flashing moon
         S7C_setSymbol(3, displaySymbol);
         S7C_refreshDisplay(localCnt++);
-        delay_ms(1);
+        //delay_ms(1);
     }
 }
 
