@@ -41,7 +41,7 @@
 #define MAX_CALIB_VAL 95
 #define MAX_SLEEP_MINS 30
 #define MAX_DEEPSLEEP_MINS 60
-#define MAX_FORCE_VAL 100
+#define MAX_FORCE_VAL 150
 
 enum
 {
@@ -95,7 +95,7 @@ void setup_menu()
             case ENABLE_SOUND: // ENABLE SOUND: values 0 or 1
                 S7C_setSymbol(0, 0);
                 S7C_setSymbol(1, 0);
-                checkButton(&_btnPlus, &_eepromData.enableSound, 1, nowTime);  // ADD button
+                checkButton(&_btnPlus, &_eepromData.enableSound, 1, nowTime);  // PLUS button
                 checkButton(&_btnMinus, &_eepromData.enableSound, 1, nowTime); // MINUS button
                 if (oldSoundValue != _eepromData.enableSound)
                 {
@@ -140,10 +140,11 @@ void setup_menu()
                 S7C_setDigit(1, _eepromData.deepSleepTimeout / 10);
                 S7C_setDigit(2, _eepromData.deepSleepTimeout % 10);
                 break;
-            case FORCE_VAL: // FORCE MODE INCREMENT: values 0..100 degrees
+            case FORCE_VAL: // FORCE MODE INCREMENT: values 10..MAX_FORCE_VAL degrees
                 checkButton(&_btnPlus, &_eepromData.forceModeIncrement, 5, nowTime);
                 checkButton(&_btnMinus, &_eepromData.forceModeIncrement, -5, nowTime);
-                _eepromData.forceModeIncrement = _eepromData.forceModeIncrement > MAX_FORCE_VAL ? MAX_FORCE_VAL : _eepromData.forceModeIncrement;
+                _eepromData.forceModeIncrement = (_eepromData.forceModeIncrement > MAX_FORCE_VAL) ? MAX_FORCE_VAL : 
+                                                    (_eepromData.forceModeIncrement < 10) ? 10 : _eepromData.forceModeIncrement;
                 if (oldforceModeIncrement != _eepromData.forceModeIncrement)
                 {
                     _haveToSaveData = nowTime;
@@ -153,7 +154,7 @@ void setup_menu()
                 S7C_setDigit(2, _eepromData.forceModeIncrement % 10);
                 break;
             case HEATER_VAL: //VOLTAGE HEATER, 110 or 220 volt
-                checkButton(&_btnPlus, &_eepromData.heaterVoltage, 110, nowTime);  // ADD button
+                checkButton(&_btnPlus, &_eepromData.heaterVoltage, 110, nowTime);  // PLUS button
                 checkButton(&_btnMinus, &_eepromData.heaterVoltage, 110, nowTime); // MINUS button
                 if (oldheaterVoltage != _eepromData.heaterVoltage)
                 {
