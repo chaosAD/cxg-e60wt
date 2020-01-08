@@ -70,12 +70,12 @@ uint32_t _haveToSaveData = 0;
 static uint32_t _sleepTimer = 0;
 static uint32_t _heatPointDisplayTime = 0;
 static uint8_t _currentState = NORMAL_MODE;
-int16_t calibrationADC1;
-int16_t calibrationADC2;
+int16_t _calibrationADC1;
+int16_t _calibrationADC2;
 uint8_t error = 0;
-int16_t coefA;
-int16_t coefB;
-uint32_t nowTime;
+int16_t _coefA;
+int16_t _coefB;
+uint32_t _nowTime;
 
 struct EEPROM_DATA _eepromData;
 struct Button _btnPlus = {PB7, 0, 0, 0, 0, 0};
@@ -84,6 +84,7 @@ struct Button _btnMinus = {PB6, 0, 0, 0, 0, 0};
 void deepSleep();
 uint8_t checkSleep(uint32_t nowTime);
 void checkHeatPointValidity();
+void calcCoef();
 
 void setup()
 {
@@ -113,13 +114,13 @@ void setup()
     // EEPROM
     eeprom_read(EEPROM_START_ADDR, &_eepromData, sizeof(_eepromData));
     // First launch, eeprom empty OR -button pressed when power the device
-    if (_eepromData.heatPoint == 0 || (getPin(PB6) == LOW && getPin(PB7) > 0))
+    if (_eepromData.heatPoint == 0 || ((getPin(PB6) == LOW && getPin(PB7) > 0)))
     {
         while (getPin(PB6) == LOW);             //pending -button release
         if (_eepromData.calibrationADC1 == 0)   //only first launch if eeprom empty
         {
-            _eepromData.calibrationADC1 = 64;   // ADC value at CALIBRATION_TEMP1
-            _eepromData.calibrationADC2 = 114;  // ADC value at CALIBRATION_TEMP2
+            _eepromData.calibrationADC1 = 64;   // ADC value at CALIBRATION_TEMP1 //my = 64
+            _eepromData.calibrationADC2 = 114;  // ADC value at CALIBRATION_TEMP2 //my = 114
         }
         _eepromData.heatPoint = 90;             // default temperature
         _eepromData.enableSound = 1;            // default sound enable
@@ -141,10 +142,7 @@ void setup()
     }
     
     // The calculation of the coefficients of the equation of the line
-    calibrationADC1 = _eepromData.calibrationADC1;
-    calibrationADC2 = _eepromData.calibrationADC2;
-    coefA = (CALIBRATION_TEMP1 - CALIBRATION_TEMP2) / (calibrationADC1 - calibrationADC2);
-    coefB = CALIBRATION_TEMP2 - (coefA * calibrationADC2);
+    calcCoef();
 
     // Enter in calibration mode (hold both buttons and turn on the device)
     if (getPin(PB6) == LOW && getPin(PB7) == LOW)
@@ -162,7 +160,7 @@ void mainLoop()
     static uint16_t adcValStart = 0; // for error = 4
            
     uint8_t displaySymbol = 0;
-    nowTime = currentMillis();
+    _nowTime = currentMillis();
 
     // Input power sensor
     static uint16_t oldADCUI = 220;
@@ -177,7 +175,7 @@ void mainLoop()
     oldADCVal = adcVal;
 
     // Degrees value
-    int16_t currentDegrees = (coefA * adcVal) + coefB;          //equations of a line, calculation of degrees from ADC
+    int16_t currentDegrees = (_coefA * adcVal) + _coefB;          //equations of a line, calculation of degrees from ADC
     currentDegrees += _eepromData.calibrationValue;             //correction factor from menu "CAL"
     currentDegrees = (currentDegrees < 0) ? 0 : currentDegrees; //temperature cannot be negative
     
@@ -188,7 +186,7 @@ void mainLoop()
     error = (adcVal < 10) ? 1 : (adcVal > 1000) ? 2 : (currentDegrees > (MAX_HEAT + 30)) ? 3 : 0;
     static int8_t flagErr4 = 0;         //for debug flagErr4 = 1
     adcValStart = (localCnt == (REAL_SECOND / 3)) ? adcVal : adcValStart; //wait 333 ms, initial temperature
-    if (localCnt == (REAL_SECOND * 4) && !flagErr4 && adcValStart < calibrationADC1 - 10) //wait 4 sec, once
+    if (localCnt == (REAL_SECOND * 4) && !flagErr4 && adcValStart < _calibrationADC1 - 10) //wait 4 sec, once
     {
         flagErr4 = adcVal - adcValStart;
         error = (flagErr4 < 4) ? 4 : 0; //whether the soldering iron is 20 degrees above the initial temperature
@@ -219,7 +217,7 @@ void mainLoop()
 
     // Check for sleep
     static uint8_t oldSleepState = 0;
-    uint8_t sleepState = checkSleep(nowTime);
+    uint8_t sleepState = checkSleep(_nowTime);
     if (sleepState != oldSleepState)
     {
         beepAlarm();
@@ -230,38 +228,42 @@ void mainLoop()
     // Check for buttons
     static uint8_t oldAction = 0;
     uint16_t oldHeatPoint = _eepromData.heatPoint;
-    uint8_t action = checkButton(&_btnPlus, &_eepromData.heatPoint, 5, nowTime) +  // PLUS button
-                     checkButton(&_btnMinus, &_eepromData.heatPoint, -5, nowTime); // MINUS button
+    uint8_t action = checkButton(&_btnPlus, &_eepromData.heatPoint, 5, _nowTime) +  // PLUS button
+                     checkButton(&_btnMinus, &_eepromData.heatPoint, -5, _nowTime); // MINUS button
     if (action)
     {
         // when any buttons were pressed we will display target temperature
-        _heatPointDisplayTime = nowTime + HEATPOINT_DISPLAY_DELAY;
+        _heatPointDisplayTime = _nowTime + HEATPOINT_DISPLAY_DELAY;
         if (action != oldAction && action > 1) // two buttons were pressed
         {
             if (_currentState == CALIBRATION_MODE2)
             {
+                while (getPin(PB6) == LOW || getPin(PB7) == LOW); //pending +-button release
                 _eepromData.calibrationADC2 = adcVal;                
                 _eepromData.heatPoint = 90;
                 _currentState = FORCED_MODE;
-                eeprom_write(EEPROM_START_ADDR, &_eepromData, sizeof(_eepromData));
-                while (getPin(PB6) == LOW || getPin(PB7) == LOW); //pending +-button release
+                //eeprom_write(EEPROM_START_ADDR, &_eepromData, sizeof(_eepromData));
+                _haveToSaveData = _nowTime;
             }
             if (_currentState == CALIBRATION_MODE1)
             {
+                while (getPin(PB6) == LOW || getPin(PB7) == LOW); //pending +-button release
                 _eepromData.calibrationADC1 = adcVal;                
                 _eepromData.heatPoint = CALIBRATION_TEMP2;
                 _currentState = CALIBRATION_MODE2;
-                eeprom_write(EEPROM_START_ADDR, &_eepromData, sizeof(_eepromData));
-                while (getPin(PB6) == LOW || getPin(PB7) == LOW); //pending +-button release
+                //eeprom_write(EEPROM_START_ADDR, &_eepromData, sizeof(_eepromData));
+                _haveToSaveData = _nowTime;
             }
             beepAlarm();
             if (_currentState == CALIBRATION_MODE1 || _currentState == CALIBRATION_MODE2) //calculation of new coefficients when changing calibration values
             {
-                eeprom_read(EEPROM_START_ADDR, &_eepromData, sizeof(_eepromData));
-                calibrationADC1 = _eepromData.calibrationADC1;
-                calibrationADC2 = _eepromData.calibrationADC2;
-                coefA = (CALIBRATION_TEMP1 - CALIBRATION_TEMP2) / (calibrationADC1 - calibrationADC2);
-                coefB = CALIBRATION_TEMP2 - (coefA * calibrationADC2);
+                // The calculation of the coefficients of the equation of the line
+                calcCoef();
+                //eeprom_read(EEPROM_START_ADDR, &_eepromData, sizeof(_eepromData));
+                //_calibrationADC1 = _eepromData.calibrationADC1;
+                //_calibrationADC2 = _eepromData.calibrationADC2;
+                //_coefA = (CALIBRATION_TEMP1 - CALIBRATION_TEMP2) / (_calibrationADC1 - _calibrationADC2);
+                //_coefB = CALIBRATION_TEMP2 - (_coefA * _calibrationADC2);
             }
             
             if (_currentState != CALIBRATION_MODE1 && _currentState != CALIBRATION_MODE2) //skip forced mode in calibration mode
@@ -272,7 +274,7 @@ void mainLoop()
         if (oldHeatPoint != _eepromData.heatPoint)
         {
             checkHeatPointValidity();
-            _haveToSaveData = nowTime;
+            _haveToSaveData = _nowTime;
         }
     }
     oldAction = action;
@@ -337,8 +339,8 @@ void mainLoop()
     //   * till _heatPointDisplayTime timeout is reached
     //   * when the current temperature is in range ±10 degrees
     uint16_t displayVal = currentDegrees;
-    uint8_t tempInRange = (displayVal >= targetHeatPoint - 15) && (displayVal <= targetHeatPoint + 15);
-    if (nowTime < _heatPointDisplayTime || tempInRange)
+    uint8_t tempInRange = (displayVal >= targetHeatPoint - 15) && (displayVal <= targetHeatPoint + 15) && (_currentState < CALIBRATION_MODE1);
+    if (_nowTime < _heatPointDisplayTime || tempInRange)
     {
         displayVal = targetHeatPoint;
         displaySymbol |= SYM_TEMP;
@@ -350,24 +352,24 @@ void mainLoop()
     displaySymbol |= (_currentState == FORCED_MODE) ? SYM_FARS : 0;                                     // F in forced mode
     displaySymbol |= (_currentState >= CALIBRATION_MODE1) ? 107 : 0;                                    // All symbol light in calibration mode
 
-    if (_currentState != DEEPSLEEP_MODE)
-    {
-        displaySymbol |= SYM_CELS;
-        S7C_setDigit(0, displayVal / 100);
-        S7C_setDigit(1, (displayVal / 10) % 10);
-        S7C_setDigit(2, displayVal % 10);
-    }
-    else
-    {
-        // Set blank display
-        S7C_setSymbol(0, 0);
-        S7C_setSymbol(1, 0);
-        S7C_setSymbol(2, 0);
-    }
+    displaySymbol |= SYM_CELS;
+    S7C_setDigit(0, displayVal / 100);
+    S7C_setDigit(1, (displayVal / 10) % 10);
+    S7C_setDigit(2, displayVal % 10);
     S7C_setSymbol(3, displaySymbol);
-
-    checkPendingDataSave(nowTime);
-    S7C_refreshDisplay(nowTime);
+    //if (_currentState != DEEPSLEEP_MODE)
+    //{
+    //    
+    //}
+    //else
+    //{
+    //    // Set blank display
+    //    S7C_setSymbol(0, 0);
+    //    S7C_setSymbol(1, 0);
+    //    S7C_setSymbol(2, 0);
+    //}
+    checkPendingDataSave(_nowTime);
+    S7C_refreshDisplay(_nowTime);
     localCnt++;
     delay_ms(1);
 }
@@ -425,6 +427,14 @@ void deepSleep()
         S7C_refreshDisplay(localCnt++);
         delay_ms(1);
     }
+}
+
+void calcCoef()     // The calculation of the coefficients of the equation of the line
+{
+    _calibrationADC1 = _eepromData.calibrationADC1;
+    _calibrationADC2 = _eepromData.calibrationADC2;
+    _coefA = (CALIBRATION_TEMP1 - CALIBRATION_TEMP2) / (_calibrationADC1 - _calibrationADC2);
+    _coefB = CALIBRATION_TEMP2 - (_coefA * _calibrationADC2);
 }
 
 void main()
