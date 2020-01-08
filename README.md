@@ -2,7 +2,7 @@
 
 Discussion https://radiokot.ru/forum/viewtopic.php?f=2&t=159650
 
-Video instruction https://youtu.be/t-WOZShN3Fs
+Video tutorial https://youtu.be/t-WOZShN3Fs
 
 A firmware for new soldering irons with STM8S103K3 MCU onboard. Some missing features have been implemented, such as sleep/wake up modes, sounds, errors check, etc. 
 
@@ -33,7 +33,7 @@ sudo make install
 ```
 ### To build the firmware
 ```
-git clone https://github.com/pav1388/cxg-e60wt.git
+git clone https://github.com/Lymes/cxg-e60wt.git
 cd cxg-e60wt
 make
 make flash
@@ -47,7 +47,7 @@ Doble-click on any key will cyclically change the following menu items:
 * CAL: calibration value in degrees, range -95..95 (default 0)
 * SL1: sleep value in minutes, range 1..30 (default 3)
 * SL2: DEEP sleep value in minutes, range 1..60 (default 10)
-* FRC: Forced temperature increase range 10..150 (default 40)
+* FRC: Forced temperature increase range 0..100 (default 40)
 * HEA: The voltage of the heating element is 110 or 220 volts (default 110)
 
 To exit the Service Menu just switch OFF/ON the soldering iron
