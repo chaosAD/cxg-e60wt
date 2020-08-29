@@ -56,6 +56,8 @@ static const long powersOf16[] = {
 
 // digitCodeMap indicate which segments must be illuminated to display
 // each number.
+
+//for right-handers
 static const uint8_t digitCodeMap[] = {
     //  GFEDCBA  Segments      7-segment map:
     0B00111111, // 0   "0"          AAA
@@ -99,6 +101,52 @@ static const uint8_t digitCodeMap[] = {
     0B10000000, // 46  '.'  PERIOD
     0B01100011, // 42 '*'  DEGREE ..
 };
+/*
+//for left-handers
+static const uint8_t digitCodeMap[] = {
+    //  GFEDCBA  Segments      7-segment map:
+    0B00111111, // 0   "0"          AAA
+    0B00110000, // 1   "1"         F   B
+    0B01011011, // 2   "2"         F   B
+    0B01111001, // 3   "3"          GGG
+    0B01110100, // 4   "4"         E   C
+    0B01101101, // 5   "5"         E   C
+    0B01101111, // 6   "6"          DDD
+    0B00111000, // 7   "7"
+    0B01111111, // 8   "8"
+    0B01111101, // 9   "9"
+    0B01111110, // 65  'A'
+    0B01100111, // 66  'b'
+    0B00001111, // 67  'C'
+    0B01110011, // 68  'd'
+    0B01001111, // 69  'E'
+    0B01001110, // 70  'F'
+    0B00101111, // 71  'G'
+    0B01110110, // 72  'H'
+    0B00110000, // 73  'I'
+    0B00110001, // 74  'J'
+    0B01110110, // 75  'K'  Same as 'H'
+    0B00000111, // 76  'L'
+    0B00000000, // 77  'M'  NO DISPLAY
+    0B01100010, // 78  'n'
+    0B00111111, // 79  'O'
+    0B01011110, // 80  'P'
+    0B01111100, // 81  'q'
+    0B01000010, // 82  'r'
+    0B01101101, // 83  'S'
+    0B01000111, // 84  't'
+    0B00110111, // 85  'U'
+    0B00110111, // 86  'V'  Same as 'U'
+    0B00000000, // 87  'W'  NO DISPLAY
+    0B01110110, // 88  'X'  Same as 'H'
+    0B01110101, // 89  'y'
+    0B01011011, // 90  'Z'  Same as '2'
+    0B00000000, // 32  ' '  BLANK
+    0B01000000, // 45  '-'  DASH
+    0B10000000, // 46  '.'  PERIOD
+    0B01011100, // 42 '*'  DEGREE ..
+};
+*/
 
 // Constant pointers to constant data
 const uint8_t *const numeralCodes = digitCodeMap;
@@ -123,7 +171,8 @@ static uint8_t waitOffActive = 0;        // Whether  the program is waiting with
 void S7C_init()
 {
   uint8_t numDigits = 4;
-  uint8_t digitPins[] = {PD0, PD1, PD2, PD3};
+  uint8_t digitPins[] = {PD0, PD1, PD2, PD3};	//for right-handers
+  //uint8_t digitPins[] = {PD2, PD1, PD0, PD3};	//for left-handers
   uint8_t segmentPins[] = {PC7, PC5, PC3, PE5, PC2, PC6, PC1, PC4};
   uint8_t resistorsOnSegments = false;   // 'false' means resistors are on digit pins
   uint8_t hardwareConfig = COMMON_ANODE; // See README.md for options
